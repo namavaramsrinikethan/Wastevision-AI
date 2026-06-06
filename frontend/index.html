@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WasteVision</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        input {
+            padding: 8px;
+            width: 90%;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        h2 {
+            color: #333;
+        }
+
+        .dealer {
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>♻️ WasteVision AI</h2>
+
+    <!-- USER DETAILS -->
+    <div class="card">
+        <h3>👤 User Details</h3>
+
+        <input type="text" id="name" placeholder="Enter Name">
+        <input type="text" id="phone" placeholder="Enter Phone Number">
+        <input type="text" id="address" placeholder="Enter Address">
+
+        <button onclick="getLocation()">📍 Get My Location</button>
+        <p id="locationStatus"></p>
+
+        <button onclick="saveUser()">💾 Save My Details</button>
+    </div>
+
+    <!-- IMAGE UPLOAD -->
+    <div class="card">
+        <h3>📸 Upload Waste Image</h3>
+        <input type="file" id="imageInput">
+        <br>
+        <button onclick="uploadImage()">Analyze</button>
+    </div>
+
+    <!-- ACTION BUTTONS -->
+    <button onclick="getLocations()">📍 Find Scrap Dealers Near Me</button>
+    <button onclick="requestPickup()">🚚 Request Pickup</button>
+
+    <div id="result"></div>
+
+    <script>
+        console.log("JS LOADED");
+
+        let userLat = null;
+        let userLng = null;
+
+        // 🔥 GET LOCATION
+        function getLocation() {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    userLat = position.coords.latitude;
+                    userLng = position.coords.longitude;
+
+                    document.getElementById("locationStatus").innerText =
+                        `Location captured ✅ (${userLat}, ${userLng})`;
+                },
+                error => {
+                    alert("Location permission denied ❌");
+                }
+            );
+        }
+
+        // 🔥 SAVE USER
+        async function saveUser() {
+            const name = document.getElementById("name").value;
+            const phone = document.getElementById("phone").value;
+            const address = document.getElementById("address").value;
+
+            if (!name || !phone || !address || userLat === null) {
+                alert("Please fill all details and get location");
+                return;
+            }
+
+            const response = await fetch("http://127.0.0.1:5000/save_user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name, phone, address, lat: userLat, lng: userLng
+                })
+            });
+
+            const data = await response.json();
+            alert(data.status);
+        }
+
+        // 🔥 IMAGE UPLOAD
+        async function uploadImage() {
+            const input = document.getElementById('imageInput');
+            const file = input.files[0];
+
+            if (!file) {
+                alert("Please select an image");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("image", file);
+
+            const response = await fetch("http://127.0.0.1:5000/upload", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+
+            let objectHTML = "<ul>";
+            for (let key in data.objects) {
+                objectHTML += `<li>${key}: ${data.objects[key]}</li>`;
+            }
+            objectHTML += "</ul>";
+
+            let recHTML = "<ul>";
+            data.recommendations.forEach(r => {
+                recHTML += `<li>${r}</li>`;
+            });
+            recHTML += "</ul>";
+
+            document.getElementById("result").innerHTML = `
+        <div class="card">
+            <h3>📦 Waste Analysis</h3>
+            ${objectHTML}
+            <p>💰 ₹${data.profit}</p>
+            <p>🌱 ${data.carbon_saved} kg CO₂</p>
+            <p>📊 Score: ${data.score}</p>
+        </div>
+
+        <div class="card">
+            <h3>💡 Recommendations</h3>
+            ${recHTML}
+        </div>
+    `;
+        }
+
+        // 🔥 UPDATED DEALERS DISPLAY (IMPORTANT FIX)
+        async function getLocations() {
+            console.log("BUTTON CLICKED 🔥");
+
+            if (userLat === null) {
+                alert("Please get your location first");
+                return;
+            }
+
+            const response = await fetch(
+                `http://127.0.0.1:5000/real_locations?lat=${userLat}&lng=${userLng}`
+            );
+
+            const data = await response.json();
+
+            let html = "<div class='card'><h3>📍 Nearby Scrap Dealers</h3>";
+
+            data.forEach(loc => {
+                html += `
+            <div class="dealer">
+                <b>${loc.name}</b><br>
+                📍 ${loc.address}<br>
+                ⭐ ${loc.rating}<br>
+                ${loc.phone ? "📞 " + loc.phone + "<br>" : ""}
+                ${loc.distance ? "📏 " + loc.distance + " km<br>" : ""}
+                <a href="https://www.google.com/maps?q=${loc.lat},${loc.lng}" target="_blank">
+                    Open in Maps
+                </a>
+            </div>
+        `;
+            });
+
+            html += "</div>";
+
+            document.getElementById("result").innerHTML += html;
+        }
+
+        // 🔥 PICKUP SYSTEM
+        async function requestPickup() {
+            const name = document.getElementById("name").value;
+
+            if (!name) {
+                alert("Please enter your name first");
+                return;
+            }
+
+            const response = await fetch("http://127.0.0.1:5000/request_pickup", {
+                method: "POST"
+            });
+
+            const data = await response.json();
+
+            const html = `
+        <div class="card">
+            <h3>🚚 Pickup Confirmed</h3>
+            <p><b>Status:</b> ${data.status}</p>
+            <p><b>Driver:</b> ${data.driver.name}</p>
+            <p>📞 ${data.driver.phone}</p>
+            <p>🚗 ${data.driver.vehicle}</p>
+            <p><b>Dealer:</b> ${data.dealer.name}</p>
+            <p>📞 ${data.dealer.phone}</p>
+            <p><b>ETA:</b> ${data.eta}</p>
+        </div>
+    `;
+
+            document.getElementById("result").innerHTML += html;
+        }
+    </script>
+
+</body>
+
+</html>
